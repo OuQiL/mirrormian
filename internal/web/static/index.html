@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>魔镜面试 · AI 模拟面试</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/logo_normal.png" type="image/png">
+  <script>
+    // 主题引导：尽可能早地应用已保存主题，避免闪烁
+    (function () {
+      try {
+        var t = localStorage.getItem('mirror-mian-theme');
+        if (!t && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark';
+        if (t) document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 顶部标题栏（办公应用风格） -->
+  <header class="titlebar">
+    <div class="titlebar-left">
+      <span class="titlebar-brand">
+        <img class="logo" src="assets/logo_normal.png" alt="魔镜面试">
+        魔镜面试
+        <span class="titlebar-divider"></span>
+        <span id="titlebar-context" class="titlebar-context">首页</span>
+      </span>
+    </div>
+    <div class="titlebar-right">
+      <button id="theme-toggle" class="theme-toggle" title="切换深浅色模式" aria-label="切换深浅色模式">
+        <svg class="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <div id="account-area" class="account-area">
+        <button id="btn-login" class="btn-login" title="登录 / 注册">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>登录 / 注册</span>
+        </button>
+        <div id="user-menu" class="user-menu" style="display:none">
+          <button id="user-chip" class="user-chip" title="账户">
+            <span class="user-avatar" id="user-avatar">镜</span>
+            <span class="user-name" id="user-name">账户</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="user-caret"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div id="user-dropdown" class="user-dropdown">
+            <div class="dropdown-head">
+              <div class="dropdown-name" id="dropdown-name">账户</div>
+              <div class="dropdown-email" id="dropdown-email"></div>
+            </div>
+            <button id="btn-logout" class="dropdown-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+              退出登录
+            </button>
+          </div>
+        </div>
+      </div>
+      <span id="titlebar-status" class="titlebar-status">运行正常</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- 左侧导航栏（文label式侧栏） -->
+    <nav class="activitybar" id="activitybar">
+      <div class="activity-group">
+        <button class="activity-item active" data-panel="home" title="首页">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5M9 21v-6h6v6"/></svg>
+          </span><span class="activity-label">首页</span>
+        </button>
+        <button class="activity-item" data-panel="interview" title="AI 面试">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="20" cy="4" r="1.4" fill="currentColor"/></svg>
+          </span><span class="activity-label">AI 面试</span>
+        </button>
+        <button class="activity-item" data-panel="grow" title="么么Chat">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg>
+          </span><span class="activity-label">么么Chat</span>
+        </button>
+        <button class="activity-item" data-panel="profile" title="我的画像">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20v-3M9 20v-5M13 20V8M17 20v-9"/><rect x="3" y="3" width="18" height="17" rx="2" transform="translate(0 1)"/></svg>
+          </span><span class="activity-label">我的画像</span>
+        </button>
+        <button class="activity-item" data-panel="review" title="复习计划">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 1 3 6.2"/><path d="M4 12h8V4"/></svg>
+          </span><span class="activity-label">复习计划</span>
+        </button>
+        <button class="activity-item" data-panel="domain" title="领域管理">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h3l2 2.5h9a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+          </span><span class="activity-label">领域管理</span>
+        </button>
+        <button class="activity-item" data-panel="resume" title="简历管理">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><path d="M9 13h6M9 17h6"/></svg>
+          </span><span class="activity-label">简历管理</span>
+        </button>
+        <button class="activity-item" data-panel="history" title="历史面试">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7l-.01.01"/><path d="M3 4v4h4"/><path d="M12 7v5l3 3"/></svg>
+          </span><span class="activity-label">历史面试</span>
+        </button>
+      </div>
+      <div class="activity-group activity-bottom">
+        <button class="activity-item" data-panel="settings" title="系统设置">
+          <span class="activity-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </span><span class="activity-label">系统设置</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="content">
+      <!-- 首页落地介绍页 -->
+      <section id="panel-home" class="panel home-panel">
+        <div class="home-hero">
+          <div class="home-logo-box" id="home-logo-box" title="魔镜面试" data-tooltip="点我一下">
+            <img class="home-logo" id="home-logo-img" src="assets/logo_normal.png" alt="魔镜面试">
+          </div>
+          <h1>魔镜面试</h1>
+          <p class="home-tagline">照见真我 · 洞见成长 — 面向个人知识与职业能力的 AI 面试训练平台</p>
+          <p class="home-desc">魔镜面试依托你的个人知识库，以有状态的 AI 多轮提问还原真实面试节奏，逐题判定、逐轮追问，帮助你在实战中检验掌握、打磨表达、沉淀复习，持续精进。</p>
+        </div>
+
+        <div class="home-features">
+          <div class="home-card" data-goto="interview" data-tooltip="点击进入 · AI 模拟面试">
+            <div class="home-card-head">
+              <div class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="20" cy="4" r="1.4" fill="currentColor"/></svg></div>
+              <h3>AI 模拟面试</h3>
+              <span class="home-card-go">进入 →</span>
+            </div>
+            <p class="home-card-brief">依托领域知识与岗位 JD 的实战演练</p>
+            <ul class="home-card-more">
+              <li>基于领域知识库智能出题</li>
+              <li>逐轮追问 · 智能判定 · 完整复盘</li>
+              <li>高度还原真实面试流程</li>
+            </ul>
+          </div>
+
+          <div class="home-card" data-goto="grow" data-tooltip="点击进入 · 么么Chat">
+            <div class="home-card-head">
+              <div class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg></div>
+              <h3>么么Chat</h3>
+              <span class="home-card-go">进入 →</span>
+            </div>
+            <p class="home-card-brief">AI 技能助手 · 自然对话即问即答</p>
+            <ul class="home-card-more">
+              <li>内置快问快答 · 复习计划 · 知识学习</li>
+              <li>自然语言描述自动匹配对应技能</li>
+              <li>未命中技能同样给予自然回应</li>
+            </ul>
+          </div>
+
+          <div class="home-card" data-goto="profile" data-tooltip="点击进入 · 我的画像">
+            <div class="home-card-head">
+              <div class="home-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20v-3M9 20v-5M13 20V8M17 20v-9"/><rect x="3" y="3" width="18" height="17" rx="2"/></svg></div>
+              <h3>我的画像</h3>
+              <span class="home-card-go">进入 →</span>
+            </div>
+            <p class="home-card-brief">知识掌握情况一览无余</p>
+            <ul class="home-card-more">
+              <li>掌握度随反馈动态更新</li>
+              <li>薄弱环节与成长趋势一目了然</li>
+              <li>结合复习计划科学巩固</li>
+            </ul>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- 面试页 -->
+      <section id="panel-interview" class="panel" style="display:none">
+        <div class="panel-header"><h2>AI 面试</h2><span class="hint">选择面试模式并配置题目来源，开启一场专业的 AI 模拟面试</span></div>
+
+        <div id="setup">
+          <div class="mode-select">
+            <label><input type="radio" name="mode" value="special" checked> 专项面试（领域驱动）</label>
+            <label><input type="radio" name="mode" value="full"> 综合面试（JD 驱动）</label>
+          </div>
+          <div id="fields-special">
+            <select id="topic-select">
+              <option value="">加载领域中…</option>
+            </select>
+            <p class="hint">面试主题取自已创建的领域，可前往左侧「领域管理」新建。</p>
+          </div>
+          <div id="fields-full" style="display:none">
+            <textarea id="jd" placeholder="粘贴岗位 JD 文本"></textarea>
+            <label class="field-label">选择简历（必选，简历在「简历」页上传或粘贴）</label>
+            <select id="resume-select">
+              <option value="">选择已上传简历…</option>
+            </select>
+          </div>
+          <button id="btn-start" class="primary">开始面试</button>
+          <p class="hint">每轮一道题目，作答后系统自动判定并适时追问，单个知识点最多追问三轮。</p>
+        </div>
+
+        <div id="chat" style="display:none">
+          <div id="direction-bar"></div>
+          <div id="messages"></div>
+          <div id="loading-indicator" style="display:none">
+            <div class="spinner"></div>
+            <span>AI 正在思考…</span>
+          </div>
+          <div id="input-row">
+            <textarea id="answer" placeholder="输入你的回答…" rows="2"></textarea>
+            <button id="btn-send">回答</button>
+          </div>
+          <button id="btn-quit" class="ghost">结束面试并复盘</button>
+        </div>
+
+        <div id="review-panel" style="display:none">
+          <div class="panel-header"><h2>面试复盘</h2></div>
+          <div id="review-content" class="markdown"></div>
+          <div class="btn-row">
+            <button id="btn-again" class="primary">再来一场</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 么么Chat 页（技能对话统一入口） -->
+      <section id="panel-grow" class="panel" style="display:none">
+        <div class="panel-header">
+          <div class="grow-header-row">
+            <h2>么么Chat</h2>
+            <button id="btn-grow-history" class="ghost">历史记录</button>
+          </div>
+          <span class="hint">智能识别你的意图：命中内置技能自动启用（快问快答 / 复习计划 / 知识学习），未命中则以普通闲聊形式应答。可点选「猜你先说」快速体验。</span>
+        </div>
+        <div id="grow-guess" class="grow-guess">
+          <span class="grow-guess-label">猜你先说</span>
+          <button class="grow-guess-item" data-input="考考我 Go 并发安全">考考我 Go 并发安全</button>
+          <button class="grow-guess-item" data-input="教我 MySQL 索引原理">教我 MySQL 索引原理</button>
+          <button class="grow-guess-item" data-input="安排我今天的复习计划">安排我今天的复习计划</button>
+        </div>
+        <div class="grow-body">
+          <aside id="grow-history" class="grow-history" style="display:none">
+            <div class="grow-history-head">
+              <span class="grow-history-title">历史聊天</span>
+              <button id="btn-grow-history-close" class="ghost">收起</button>
+            </div>
+            <div id="grow-history-list" class="grow-history-list"></div>
+          </aside>
+          <div id="grow-chat" class="grow-chat">
+            <div id="grow-messages" class="chat-msgs"></div>
+            <div class="grow-input-row">
+              <textarea id="grow-input" placeholder="考考我 Redis 概念 / 教我 MySQL 索引 / 安排复习计划…" rows="2"></textarea>
+              <button id="btn-grow-send" class="primary">发送</button>
+            </div>
+            <button id="btn-grow-clear" class="ghost">新对话</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 画像页 -->
+      <section id="panel-profile" class="panel" style="display:none">
+        <div class="panel-header"><h2>我的画像</h2><span class="hint">汇总你的知识掌握程度、薄弱环节与成长趋势，为复习与补强提供依据</span></div>
+        <div id="profile-content"></div>
+      </section>
+
+      <!-- 复习页 -->
+      <section id="panel-review" class="panel" style="display:none">
+        <div class="panel-header"><h2>复习计划</h2><span class="hint">依据你的画像与面试复盘自动规划复习节奏，重点巩固薄弱知识点</span></div>
+        <div id="review-list"></div>
+        <div class="btn-row">
+          <button id="btn-plan" class="primary">生成今日复习计划</button>
+        </div>
+        <div id="plan-result"></div>
+        <div class="btn-row">
+          <input id="resources-topic" type="text" placeholder="按主题推荐 GitHub 资源（如 Redis）">
+          <button id="btn-resources">推荐资源</button>
+        </div>
+        <div id="resources-result"></div>
+      </section>
+
+      <!-- 领域管理页 -->
+      <section id="panel-domain" class="panel" style="display:none">
+        <div class="panel-header"><h2>领域管理</h2><span class="hint">管理知识领域与资料内容，为面试出题、答疑与画像分析提供知识依据</span></div>
+        <div id="domain-toolbar">
+          <input id="new-domain-name" type="text" placeholder="新领域名，如：Go 并发">
+          <button id="btn-domain-create" class="primary">创建领域</button>
+        </div>
+        <div id="domain-list"></div>
+        <div id="domain-detail" style="display:none">
+          <div class="panel-header"><h3 id="domain-detail-title"></h3></div>
+          <div id="domain-files"></div>
+          <div id="domain-editor" style="display:none">
+            <div class="settings-card">
+              <div class="btn-row">
+                <button id="btn-domain-generate" class="primary">AI 生成核心知识梳理</button>
+                <span class="hint" style="margin-top:0">按 TechSpar 提示词生成 8-12 个核心知识点到 README.md 并自动同步</span>
+              </div>
+            </div>
+            <select id="domain-file-select"></select>
+            <textarea id="domain-file-content" rows="16"></textarea>
+            <div class="btn-row">
+              <button id="btn-domain-save" class="primary">保存文件</button>
+              <button id="btn-domain-sync">同步向量</button>
+              <button id="btn-domain-back" class="ghost">返回列表</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 简历页 -->
+      <section id="panel-resume" class="panel" style="display:none">
+        <div class="panel-header"><h2>简历管理</h2><span class="hint">上传或粘贴简历，作为综合面试（JD 驱动）评估与提问的参考依据</span></div>
+        <div id="resume-upload" class="settings-card">
+          <h3>上传简历文件</h3>
+          <input id="resume-file" type="file" accept=".pdf,.docx,.txt,.md">
+          <button id="btn-resume-upload" class="primary">上传并解析</button>
+          <span id="resume-upload-result" class="test-result"></span>
+          <p class="hint">支持 PDF / DOCX / TXT / Markdown（≤10MB）。解析结果统一转为 Markdown 文本。</p>
+        </div>
+        <div class="settings-card">
+          <h3>粘贴上传</h3>
+          <input id="resume-text-name" type="text" placeholder="简历名称（如：张三-2026版）">
+          <textarea id="resume-text-content" rows="8" placeholder="直接粘贴简历文本…"></textarea>
+          <button id="btn-resume-text" class="primary">保存为简历</button>
+          <span id="resume-text-result" class="test-result"></span>
+        </div>
+        <div id="resume-list"></div>
+      </section>
+
+      <!-- 历史面试记录 -->
+      <section id="panel-history" class="panel" style="display:none">
+        <div class="panel-header"><h2>历史面试</h2><span class="hint">回顾每次面试的记录、提问与复盘总结，追踪成长轨迹持续改进</span></div>
+        <div id="history-list"></div>
+        <div id="history-detail" style="display:none">
+          <div class="btn-row">
+            <button id="btn-history-back" class="ghost">返回列表</button>
+            <button id="btn-history-resume" class="primary" style="display:none">继续面试</button>
+          </div>
+          <div id="history-detail-title"></div>
+          <div id="history-review" class="markdown"></div>
+          <div id="history-qa"></div>
+        </div>
+      </section>
+
+      <!-- 设置页 -->
+      <section id="panel-settings" class="panel" style="display:none">
+        <div class="panel-header"><h2>系统设置</h2></div>
+        <p class="hint">配置对话模型与向量服务的连接信息。保存后需<span class="warn-text">重启服务</span>生效；「测试连接」将使用当前表单值即时校验，不会保存。</p>
+        <p class="hint warn-text">⚠️ API Key 会明文显示在页面中，请勿在不受信任的网络下暴露服务端口。</p>
+
+        <div class="settings-card">
+          <h3>LLM（面试出题/判定/复盘）</h3>
+          <label class="field-label">Base URL</label>
+          <input id="set-llm-baseurl" type="text" placeholder="https://api.xiaomimimo.com/v1">
+          <label class="field-label">API Key（明文显示，可直接修改）</label>
+          <input id="set-llm-key" type="text" placeholder="sk-..." autocomplete="off">
+          <label class="field-label">模型</label>
+          <input id="set-llm-model" type="text" placeholder="mimo-v2.5">
+          <div class="btn-row">
+            <button id="btn-llm-test" class="primary">测试连接</button>
+            <span id="llm-test-result" class="test-result"></span>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>Embedding（知识库向量化）</h3>
+          <label class="field-label">Base URL</label>
+          <input id="set-emb-baseurl" type="text" placeholder="https://api.siliconflow.cn/v1">
+          <label class="field-label">API Key（明文显示，可直接修改）</label>
+          <input id="set-emb-key" type="text" placeholder="sk-..." autocomplete="off">
+          <label class="field-label">模型</label>
+          <input id="set-emb-model" type="text" placeholder="BAAI/bge-m3">
+          <div class="btn-row">
+            <button id="btn-emb-test" class="primary">测试连接</button>
+            <span id="emb-test-result" class="test-result"></span>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button id="btn-settings-save" class="primary">保存配置</button>
+          <span id="settings-save-result" class="test-result"></span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 登录 / 注册遮罩 -->
+  <div id="auth-overlay" class="auth-overlay">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <img src="assets/logo_normal.png" alt="魔镜面试">
+        <h2>魔镜面试</h2>
+        <p>每位用户的账户、资料与训练记录相互独立，登录后开启你专属的 AI 面试训练空间</p>
+      </div>
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" data-auth-tab="login">登录</button>
+        <button type="button" class="auth-tab" data-auth-tab="register">注册</button>
+      </div>
+      <form id="auth-login" class="auth-form">
+        <input id="login-email" type="email" placeholder="邮箱" autocomplete="email">
+        <input id="login-password" type="password" placeholder="密码" autocomplete="current-password">
+        <button type="submit" class="primary auth-submit">登录</button>
+      </form>
+      <form id="auth-register" class="auth-form" style="display:none">
+        <input id="reg-name" type="text" placeholder="昵称（可选）" autocomplete="nickname">
+        <input id="reg-email" type="email" placeholder="邮箱" autocomplete="email">
+        <input id="reg-password" type="password" placeholder="密码（至少 6 位）" autocomplete="new-password">
+        <button type="submit" class="primary auth-submit">注册并登录</button>
+      </form>
+      <div id="auth-msg" class="auth-msg"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script>
+  // 首页 logo 点击彩蛋：压下回弹 + 「面德+1」字幕；连点过多切换「你老戳我干嘛」图标并扣 TOKEN
+  (function () {
+    var box = document.getElementById('home-logo-box');
+    var img = document.getElementById('home-logo-img');
+    if (!box || !img) return;
+    var count = 0;
+    var POKE_AT = 5;        // 连续点击超过该次数进入「被戳烦」状态
+    var COOLDOWN_MS = 4000; // 停止戳这么久后恢复普通图标
+    var cooldownTimer = null;
+
+    box.addEventListener('click', function () {
+      count++;
+      var poked = count > POKE_AT;
+      img.src = poked ? 'assets/logo_poke.png' : 'assets/logo_normal.png';
+
+      // 重启压下回弹动画
+      box.classList.remove('pressed');
+      void box.offsetWidth;
+      box.classList.add('pressed');
+
+      showPokeText(poked ? 'TOKEN-1' : '面德+1', poked);
+
+      // 停止点击一段时间后恢复
+      clearTimeout(cooldownTimer);
+      cooldownTimer = setTimeout(function () {
+        count = 0;
+        img.src = 'assets/logo_normal.png';
+      }, COOLDOWN_MS);
+    });
+
+    function showPokeText(text, isPoke) {
+      var t = document.createElement('span');
+      t.className = 'poke-text' + (isPoke ? ' poke' : '');
+      t.textContent = text;
+      box.appendChild(t);
+      setTimeout(function () { t.remove(); }, 950);
+    }
+  })();
+  </script>
+  <script src="app.js"></script>
+  <script>
+  /* 综合面试红调：仅在选择「综合面试（JD 驱动）」模式且处于面试页时生效，
+     主色切换为红色并替换顶部品牌 logo；离开综合面试后恢复蓝色主题与常规 logo。 */
+  (function () {
+    var RED_ICON = 'assets/logo_interview.png';
+    var NORMAL_ICON = 'assets/logo_normal.png';
+    var root = document.documentElement;
+    var logo = document.querySelector('.titlebar-brand .logo');
+
+    function isFullMode() {
+      var r = document.querySelector('input[name="mode"]:checked');
+      return !!r && r.value === 'full';
+    }
+    function inInterviewPanel() {
+      var p = document.getElementById('panel-interview');
+      return !!p && p.style.display !== 'none';
+    }
+    function apply() {
+      var on = inInterviewPanel() && isFullMode();
+      if (on) { root.setAttribute('data-accent', 'red'); }
+      else { root.removeAttribute('data-accent'); }
+      if (logo) { logo.src = on ? RED_ICON : NORMAL_ICON; }
+    }
+
+    // 模式切换（专项 ↔ 综合）
+    document.querySelectorAll('input[name="mode"]').forEach(function (r) {
+      r.addEventListener('change', apply);
+    });
+
+    // 面板切换：app.js 通过 style.display 控制显示，观察属性变化以在离开面试页时恢复
+    document.querySelectorAll('.panel').forEach(function (p) {
+      new MutationObserver(apply).observe(p, { attributes: true, attributeFilter: ['style'] });
+    });
+
+    apply();
+  })();
+  </script>
+</body>
+</html>

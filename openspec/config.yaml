@@ -1,0 +1,14 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+context: |
+  Tech stack: Go 1.25, Eino (CloudWeGo) multi-agent orchestration, SQLite (modernc.org/sqlite),
+  OpenAI-compatible LLM API (MiMo / SiliconFlow / OpenAI / vLLM)
+  Architecture: 三层架构 — 交互层 (CLI, no business logic) → 编排层 (Eino Graph 多 Agent,
+  准备→面试→复盘三阶段, 专项/综合双模式) → 基础能力层 (LLM / Milvus / RAG / 画像飞轮)
+  数据飞轮: SM-2 间隔重复 + 掌握度 EMA + 薄弱点沉淀
+  面试规则: 最小单位题一次一题; LLM 判定追问 (continue/advance/stop); 每知识点最多 3 轮追问
+  RAG: Milvus 向量 + BM25 双路召回, RRF(k=60) 融合, LLM Rerank
+  Domain: AI 模拟面试与学习成长系统
