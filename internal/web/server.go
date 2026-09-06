@@ -68,6 +68,7 @@ type Server struct {
 	base   store.Store       // 共享库：账户管理 + ForUser 派生
 	llm    llm.Client
 	emb    embedding.Embedder
+	stt    llm.STT // 语音识别（视频答题转写；未配置时为 nil）
 	milvus *vector.Milvus
 	// 每个用户的隔离服务包
 	mu      sync.Mutex
@@ -88,6 +89,7 @@ func NewServer(cfg *config.Config, st store.Store) *Server {
 	return &Server{
 		cfg: cfg, base: st, llm: llmClient,
 		emb:    embedding.New(cfg),
+		stt:    llm.NewSTT(cfg),
 		milvus: vector.New(cfg.MilvusAddr),
 		users:  map[string]*userCtx{},
 		tokens: tokens,
@@ -159,6 +161,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/interview/answer", p(s.handleAnswer))
 	mux.HandleFunc("/api/interview/finish", p(s.handleFinish))
 	mux.HandleFunc("/api/interview/warmup-complete", p(s.handleWarmupComplete))
+	mux.HandleFunc("/api/interview/answer/transcribe", p(s.handleTranscribe))
 	mux.HandleFunc("/api/profile", p(s.handleProfile))
 	mux.HandleFunc("/api/review", p(s.handleReview))
 	mux.HandleFunc("/api/kb", p(s.handleKB))
@@ -202,12 +205,13 @@ func (s *Server) Start(addr string) error {
 // --- handlers ---
 
 type startReq struct {
-	Mode     string `json:"mode"` // special / full
-	Topic    string `json:"topic"`
-	JD       string `json:"jd"`
-	Resume   string `json:"resume"`
-	ResumeID string `json:"resume_id"`
-	Warmup   bool   `json:"warmup"` // 综合面试暖场模式
+	Mode       string `json:"mode"` // special / full
+	Topic      string `json:"topic"`
+	JD         string `json:"jd"`
+	Resume     string `json:"resume"`
+	ResumeID   string `json:"resume_id"`
+	AnswerType string `json:"answer_type"` // 综合面试答题方式：text / video（缺省 text）
+	Warmup     bool   `json:"warmup"`      // 综合面试暖场模式
 }
 
 type questionDTO struct {
@@ -255,6 +259,14 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "综合面试需要 jd 参数")
 			return
 		}
+		answerType := req.AnswerType
+		if answerType == "" {
+			answerType = model.AnswerTypeText
+		}
+		if answerType != model.AnswerTypeText && answerType != model.AnswerTypeVideo {
+			writeErr(w, http.StatusBadRequest, fmt.Sprintf("未知 answer_type %q（支持 text / video）", req.AnswerType))
+			return
+		}
 		resumeText := req.Resume
 		if req.ResumeID != "" {
 			// 从当前用户的简历库取解析文本
@@ -267,20 +279,26 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Warmup {
 			// 暖场模式：后台并行准备（匹配分析+方向+第一题），返回 token
-			token, err := s.warmupStart(uc, resumeText, req.JD)
+			token, err := s.warmupStart(uc, resumeText, req.JD, answerType)
 			if err != nil {
 				writeErr(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 			writeJSON(w, map[string]any{
-				"warmup":   true,
-				"token":    token,
-				"question": "你想要什么样的面试？",
+				"warmup":      true,
+				"token":       token,
+				"answer_type": answerType,
+				"question":    "你想要什么样的面试？",
 			})
 			return
 		}
 		sess, err := uc.svc.StartFull(ctx, resumeText, req.JD)
 		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		sess.AnswerType = answerType
+		if err := uc.store.SaveSession(sess); err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -291,16 +309,28 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]any{
-		"session_id": sessID,
-		"question":   questionDTO{ID: first.ID, Text: first.Text, KnowledgePt: first.KnowledgePt, Round: first.Round},
-		"mode":       req.Mode,
-		"topic":      req.Topic,
+		"session_id":  sessID,
+		"question":    questionDTO{ID: first.ID, Text: first.Text, KnowledgePt: first.KnowledgePt, Round: first.Round},
+		"mode":        req.Mode,
+		"answer_type": firstAnswerType(req.Mode, req.AnswerType),
+		"topic":       req.Topic,
 		"direction": directionDTO{
 			KeyPoints:     direction.KeyPoints,
 			JDSummary:     direction.JDSummary,
 			ResumeSummary: direction.ResumeSummary,
 		},
 	})
+}
+
+// firstAnswerType 归一化响应中的答题方式（专项面试恒为 text）。
+func firstAnswerType(mode, raw string) string {
+	if mode != model.ModeFull {
+		return model.AnswerTypeText
+	}
+	if raw == model.AnswerTypeVideo {
+		return model.AnswerTypeVideo
+	}
+	return model.AnswerTypeText
 }
 
 // directionDTO 出题方向（准备阶段产物，用于前端状态栏展示）。
@@ -388,6 +418,42 @@ func (s *Server) handleAnswer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleTranscribe 视频答题：将录制音频转写为文字（multipart 字段 file）。
+func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
+	uc := s.ucFor(w, r)
+	if uc == nil {
+		return
+	}
+	if s.stt == nil {
+		writeErr(w, http.StatusBadRequest, "语音识别未配置——请到「设置」页填写 STT 配置（可复用 LLM 服务商），保存后重启服务生效")
+		return
+	}
+	const maxAudio = 25 << 20 // 25MB
+	if err := r.ParseMultipartForm(maxAudio + 1<<20); err != nil {
+		writeErr(w, http.StatusBadRequest, "上传内容过大或格式错误")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "缺少 file 字段")
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxAudio+1))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	text, err := s.stt.Transcribe(ctx, data, header.Filename)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"text": text})
+}
+
 func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	uc := s.ucFor(w, r)
 	if uc == nil {
@@ -450,6 +516,7 @@ func (s *Server) handleKB(w http.ResponseWriter, r *http.Request) {
 type historyItem struct {
 	ID           string   `json:"id"`
 	Mode         string   `json:"mode"`
+	AnswerType   string   `json:"answer_type"`
 	Status       string   `json:"status"`
 	Topic        string   `json:"topic"`
 	KeyPoints    []string `json:"key_points"`
@@ -476,6 +543,7 @@ func (s *Server) handleHistoryList(w http.ResponseWriter, r *http.Request) {
 		item := historyItem{
 			ID:          sess.ID,
 			Mode:        sess.Mode,
+			AnswerType:  sess.AnswerType,
 			Status:      sess.Status,
 			Topic:       sess.Direction.Topic,
 			KeyPoints:   sess.Direction.KeyPoints,
@@ -533,6 +601,7 @@ func (s *Server) handleHistoryDetail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"id":            sess.ID,
 		"mode":          sess.Mode,
+		"answer_type":   sess.AnswerType,
 		"status":        sess.Status,
 		"direction":     sess.Direction,
 		"questions":     sess.Questions,

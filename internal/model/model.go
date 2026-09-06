@@ -20,6 +20,12 @@ const (
 	SessionFinished = "finished" // 已结束
 )
 
+// 答题方式
+const (
+	AnswerTypeText  = "text"  // 文本答题：输入框作答
+	AnswerTypeVideo = "video" // 视频答题：录制口述，语音转写后判定（视频仅存本地）
+)
+
 // 追问判定（面试官 Agent 的结构化输出）
 const (
 	JudgeContinue = "continue" // 游刃有余，继续追问
@@ -45,7 +51,8 @@ type Question struct {
 // Answer 用户对一道题的回答与评分。
 type Answer struct {
 	QuestionID string  `json:"question_id"`
-	Text       string  `json:"text"`
+	Text       string  `json:"text"` // 判定用文本（视频答题为转写文字）
+	Type       string  `json:"type,omitempty"` // text / video（视频答题标识）
 	Score      float64 `json:"score"` // 0-10 评分（复盘阶段生成）
 }
 
@@ -60,15 +67,16 @@ type Direction struct {
 
 // TrainingSession 一场训练会话：记录题目/回答/评分/方向全流程。
 type TrainingSession struct {
-	ID        string     `json:"id"`
-	Mode      string     `json:"mode"`
-	Status    string     `json:"status"`
-	Direction Direction  `json:"direction"`
-	Questions []Question `json:"questions"`
-	Answers   []Answer   `json:"answers"`
-	Review    string     `json:"review,omitempty"` // 复盘 Markdown 报告
-	CreatedAt  time.Time `json:"created_at"`
-	FinishedAt time.Time `json:"finished_at,omitzero"`
+	ID         string     `json:"id"`
+	Mode       string     `json:"mode"`
+	Status     string     `json:"status"`
+	AnswerType string     `json:"answer_type,omitempty"` // text / video（缺省 text）
+	Direction  Direction  `json:"direction"`
+	Questions  []Question `json:"questions"`
+	Answers    []Answer   `json:"answers"`
+	Review     string     `json:"review,omitempty"` // 复盘 Markdown 报告
+	CreatedAt  time.Time  `json:"created_at"`
+	FinishedAt time.Time  `json:"finished_at,omitzero"`
 }
 
 // SM2State SM-2 间隔重复状态（移植自 TechSpar）。

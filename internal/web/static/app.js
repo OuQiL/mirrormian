@@ -6,6 +6,7 @@
   const state = {
     sessionId: null,
     mode: 'special',
+    answerType: 'text',    // 综合面试答题方式：text / video
     answering: false,
     busy: false,
     keyPoints: [],       // 面试方向清单（准备阶段产物）
@@ -16,6 +17,17 @@
     warmupPhase: null,   // expectation / intro
     warmupExpectation: '',
     user: null,          // 当前登录用户 { id, email, name }
+  };
+
+  // 视频答题状态（录制仅保存在本地浏览器，不向后端上传）
+  const videoState = {
+    stream: null,   // 摄像头/麦克风流
+    recorder: null, // MediaRecorder
+    chunks: [],
+    blob: null,     // 录制产物
+    url: null,      // 本地回放 URL
+    recording: false,
+    ready: false,   // 是否已有可提交的录制/转写结果
   };
 
   // --- 工具 ---
@@ -77,6 +89,10 @@
   function setBusy(on) {
     state.busy = on;
     $('#btn-send').disabled = on || !state.answering;
+    $('#btn-video-send').disabled = on || !videoState.ready;
+    $('#btn-video-record').disabled = on;
+    $('#btn-video-stop').disabled = on;
+    $('#btn-video-again').disabled = on;
     $('#btn-quit').disabled = on;
     $('#loading-indicator').style.display = on ? 'flex' : 'none';
     if (on) {
@@ -124,10 +140,29 @@
     const kp = q.knowledge_point ? `<span class="kp">${esc(q.knowledge_point)}</span>` : '';
     addMessage('ai', `<div class="q-label">${label} ${kp}</div><div class="q-text">${esc(q.text)}</div>`);
     state.answering = true;
+    $('#btn-quit').disabled = false;
+    if (state.answerType === 'video') {
+      showVideoPanel();
+    } else {
+      showTextPanel();
+      $('#answer').focus();
+    }
+  }
+
+  // 文本答题输入区
+  function showTextPanel() {
+    $('#input-row').style.display = 'flex';
+    $('#video-answer').style.display = 'none';
+    resetVideoPanel();
     $('#answer').disabled = false;
     $('#btn-send').disabled = false;
-    $('#btn-quit').disabled = false;
-    $('#answer').focus();
+  }
+
+  // 视频答题面板（每题重置：清录制、开摄像头准备）
+  function showVideoPanel() {
+    $('#input-row').style.display = 'none';
+    $('#video-answer').style.display = 'block';
+    resetVideoPanel();
   }
 
   // 加载领域列表到主题下拉（主题只能选择已创建领域，不能自由输入）
@@ -152,7 +187,7 @@
   async function startInterview() {
     if (state.busy) return;
     const mode = document.querySelector('input[name="mode"]:checked').value;
-    const body = { mode };
+    const body = { mode, answer_type: state.answerType };
     if (mode === 'special') {
       body.topic = $('#topic-select').value;
       if (!body.topic) return toast('请选择面试领域');
@@ -173,6 +208,7 @@
       // 综合面试暖场：问期望 → 引导自我介绍 → 期间后台准备
       if (data.warmup) {
         state.mode = mode;
+        state.answerType = data.answer_type || 'text';
         $('#setup').style.display = 'none';
         $('#chat').style.display = 'block';
         $('#review-panel').style.display = 'none';
@@ -190,6 +226,7 @@
 
       state.sessionId = data.session_id;
       state.mode = mode;
+      state.answerType = data.answer_type || 'text';
       state.keyPoints = (data.direction && data.direction.key_points) || [];
       state.currentKp = null;
       state.completedKps = new Set();
@@ -217,6 +254,8 @@
 
   async function sendAnswer() {
     if (!state.answering || state.busy) return;
+    // 正式题目为视频答题时，由视频面板提交（文本输入框仅用于暖场阶段）
+    if (state.warmupPhase === null && state.answerType === 'video') return;
     const text = $('#answer').value.trim();
     if (!text) return toast('回答不能为空');
     state.answering = false;
@@ -261,6 +300,11 @@
       return;
     }
 
+    await postAnswer(text);
+  }
+
+  // 提交回答到后端判定（文本/视频转写共用）
+  async function postAnswer(text) {
     if (!state.sessionId) return;
     setBusy(true);
     try {
@@ -277,10 +321,134 @@
     } catch (e) {
       toast(e.message);
       state.answering = true;
-      $('#answer').disabled = false;
+      if (state.answerType === 'video') {
+        $('#btn-video-send').disabled = false;
+      } else {
+        $('#answer').disabled = false;
+      }
     } finally {
       setBusy(false);
     }
+  }
+
+  // --- 视频答题：录制（仅本地）/ 转写 / 提交 ---
+  function stopVideoTracks() {
+    if (videoState.stream) {
+      videoState.stream.getTracks().forEach((t) => t.stop());
+      videoState.stream = null;
+    }
+  }
+
+  // 重置视频面板（每题作答前调用：停流、清录制、恢复初始按钮态）
+  function resetVideoPanel() {
+    stopVideoTracks();
+    if (videoState.recorder && videoState.recorder.state !== 'inactive') {
+      videoState.recorder.stop();
+    }
+    videoState.recorder = null;
+    videoState.chunks = [];
+    if (videoState.url) URL.revokeObjectURL(videoState.url);
+    videoState.blob = null;
+    videoState.url = null;
+    videoState.ready = false;
+    videoState.recording = false;
+    $('#video-preview').srcObject = null;
+    $('#video-preview').style.display = '';
+    $('#video-playback').style.display = 'none';
+    $('#video-playback').src = '';
+    $('#video-transcript').value = '';
+    $('#btn-video-record').style.display = '';
+    $('#btn-video-record').disabled = false;
+    $('#btn-video-record').textContent = '开始录制';
+    $('#btn-video-stop').disabled = true;
+    $('#btn-video-again').style.display = 'none';
+    $('#btn-video-send').disabled = true;
+  }
+
+  async function startVideoRecording() {
+    if (state.busy) return;
+    if (!window.MediaRecorder) {
+      toast('当前浏览器不支持视频录制，请使用新版 Chrome / Edge');
+      return;
+    }
+    try {
+      if (!videoState.stream) {
+        videoState.stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true,
+        });
+      }
+      $('#video-preview').srcObject = videoState.stream;
+      const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].find(
+        (t) => MediaRecorder.isTypeSupported(t)
+      ) || '';
+      videoState.recorder = mime
+        ? new MediaRecorder(videoState.stream, { mimeType: mime })
+        : new MediaRecorder(videoState.stream);
+      videoState.chunks = [];
+      videoState.recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size) videoState.chunks.push(e.data);
+      };
+      videoState.recorder.onstop = () => {
+        videoState.blob = new Blob(videoState.chunks, { type: videoState.recorder.mimeType || 'video/webm' });
+        videoState.url = URL.createObjectURL(videoState.blob);
+        $('#video-playback').src = videoState.url;
+        $('#video-preview').style.display = 'none';
+        $('#video-playback').style.display = '';
+        videoState.ready = true;
+        $('#btn-video-send').disabled = false;
+        $('#btn-video-record').style.display = 'none';
+        $('#btn-video-again').style.display = '';
+        transcribeVideo();
+      };
+      videoState.recorder.start();
+      videoState.recording = true;
+      $('#btn-video-record').textContent = '录制中…';
+      $('#btn-video-record').disabled = true;
+      $('#btn-video-stop').disabled = false;
+    } catch (e) {
+      toast('无法开启摄像头/麦克风：' + (e.message || e));
+      resetVideoPanel();
+    }
+  }
+
+  function stopVideoRecording() {
+    if (videoState.recorder && videoState.recorder.state !== 'inactive') {
+      videoState.recorder.stop();
+    }
+    videoState.recording = false;
+    $('#btn-video-stop').disabled = true;
+  }
+
+  // 录制停止后自动转写（失败不阻断，可手动修改后提交）
+  async function transcribeVideo() {
+    if (!videoState.blob || state.busy) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', videoState.blob, 'answer.webm');
+      const res = await fetch('/api/interview/answer/transcribe', {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.text) $('#video-transcript').value = data.text;
+    } catch (e) {
+      toast('语音转写失败：' + e.message + '（可手动输入回答后提交）');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // 视频答题提交：转写（或手动修改）文本 → 后端判定
+  async function submitVideoAnswer() {
+    if (!state.answering || state.busy || !state.sessionId) return;
+    const text = $('#video-transcript').value.trim();
+    if (!text) return toast('回答不能为空（可重新录制或手动输入）');
+    addMessage('user', esc(text));
+    $('#video-transcript').value = '';
+    await postAnswer(text);
   }
 
   // 提前结束：对已答题目生成复盘
@@ -303,6 +471,7 @@
   }
 
   function showReview(md) {
+    resetVideoPanel();
     $('#chat').style.display = 'none';
     $('#review-panel').style.display = 'block';
     $('#review-content').innerHTML = markdownToHtml(md);
@@ -310,6 +479,7 @@
   }
 
   function resetToSetup() {
+    resetVideoPanel();
     state.sessionId = null;
     state.keyPoints = [];
     state.currentKp = null;
@@ -321,6 +491,15 @@
     $('#chat').style.display = 'none';
     $('#setup').style.display = 'block';
     $('#messages').innerHTML = '';
+    $('#input-row').style.display = 'flex';
+    // 答题方式与设置面板选择器保持同步（专项恒为文本）
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    if (mode === 'special') {
+      state.answerType = 'text';
+      document.querySelectorAll('.answer-type-option').forEach((b) => {
+        b.classList.toggle('active', b.dataset.answerType === 'text');
+      });
+    }
   }
 
   // --- 历史面试记录 ---
@@ -351,10 +530,12 @@
         const statusCls = it.status === 'finished' ? 'finished' : 'ongoing';
         const score = it.avg_score != null ? `平均分 ${it.avg_score}` : '暂无评分';
         const topic = it.topic ? ` · ${esc(it.topic)}` : '';
+        const videoTag = it.mode === 'full' && it.answer_type === 'video' ? '<span class="history-badge video">视频答题</span>' : '';
         const resumeBtn = it.status === 'ongoing' ? `<button class="small history-resume-btn" data-id="${esc(it.id)}">继续面试</button>` : '';
         return `<div class="history-item" data-id="${esc(it.id)}">
           <div class="history-item-top">
             <span class="history-item-title">${modeLabel(it.mode)}${topic}</span>
+            ${videoTag}
             <span class="history-badge ${statusCls}">${statusText}</span>
           </div>
           <div class="history-item-meta">
@@ -386,7 +567,7 @@
         resumeBtn.dataset.id = '';
       }
       $('#history-detail-title').innerHTML =
-        `<h3>${esc(modeLabel(d.mode))}${d.direction && d.direction.topic ? ' · ' + esc(d.direction.topic) : ''}</h3>
+        `<h3>${esc(modeLabel(d.mode))}${d.direction && d.direction.topic ? ' · ' + esc(d.direction.topic) : ''}${d.answer_type === 'video' ? ' · 视频答题' : ''}</h3>
          <p class="history-item-meta"><span>${st}</span><span>${d.questions.length} 题</span><span>${formatTime(d.created_at)}</span></p>`;
       const rv = $('#history-review');
       const qa = $('#history-qa');
@@ -405,7 +586,8 @@
           let body;
           if (a && a.text) {
             const sc = a.score > 0 ? `<span class="history-qa-score">评分 ${a.score.toFixed(1)}</span>` : '';
-            body = `<div class="history-qa-a">${esc(a.text)}${sc}</div>`;
+            const vtag = a.type === 'video' ? '<span class="history-qa-type">视频作答</span>' : '';
+            body = `<div class="history-qa-a">${esc(a.text)}${sc}${vtag}</div>`;
           } else {
             body = `<div class="history-qa-a hint">未作答</div>`;
           }
@@ -436,6 +618,7 @@
       goto('interview');
       state.sessionId = d.id;
       state.mode = d.mode;
+      state.answerType = d.answer_type === 'video' ? 'video' : 'text';
       state.keyPoints = (d.direction && d.direction.key_points) || [];
       state.currentKp = null;
       state.completedKps = new Set();
@@ -1244,6 +1427,14 @@
       const full = document.querySelector('input[name="mode"]:checked').value === 'full';
       $('#fields-special').style.display = full ? 'none' : 'block';
       $('#fields-full').style.display = full ? 'block' : 'none';
+      // 专项面试恒为文本答题
+      if (!full) {
+        state.answerType = 'text';
+        document.querySelectorAll('.answer-type-option').forEach((b) => {
+          b.classList.toggle('active', b.dataset.answerType === 'text');
+        });
+        $('#answer-type-hint').textContent = '文本答题：输入框作答；视频答题：摄像头录制口述，自动语音转写后由 AI 判定（录制视频仅保存在本地）。';
+      }
     }),
   );
   $('#btn-start').addEventListener('click', startInterview);
@@ -1254,6 +1445,22 @@
       sendAnswer();
     }
   });
+  // 综合面试答题方式选择（文本 / 视频）
+  document.querySelectorAll('.answer-type-option').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.answer-type-option').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.answerType = b.dataset.answerType;
+      $('#answer-type-hint').textContent = b.dataset.answerType === 'video'
+        ? '视频答题：摄像头录制口述，自动语音转写后由 AI 判定（录制视频仅保存在本地）。'
+        : '文本答题：输入框作答；视频答题：摄像头录制口述，自动语音转写后由 AI 判定（录制视频仅保存在本地）。';
+    });
+  });
+  // 视频答题：录制 / 结束 / 重录 / 提交
+  $('#btn-video-record').addEventListener('click', startVideoRecording);
+  $('#btn-video-stop').addEventListener('click', stopVideoRecording);
+  $('#btn-video-again').addEventListener('click', resetVideoPanel);
+  $('#btn-video-send').addEventListener('click', submitVideoAnswer);
   $('#btn-quit').addEventListener('click', finishInterview);
   $('#btn-again').addEventListener('click', resetToSetup);
   // 历史面试：列表项点击进入详情；「继续面试」按钮直达续面

@@ -119,6 +119,7 @@ func (s *sqliteStore) migrate() error {
 			user_id TEXT NOT NULL DEFAULT '',
 			mode TEXT NOT NULL,
 			status TEXT NOT NULL,
+			answer_type TEXT NOT NULL DEFAULT 'text',
 			direction TEXT NOT NULL,   -- JSON: model.Direction
 			questions TEXT NOT NULL,   -- JSON: []model.Question
 			answers TEXT NOT NULL,     -- JSON: []model.Answer
@@ -193,6 +194,17 @@ func (s *sqliteStore) migrate() error {
 			if _, err := tx.Exec(`ALTER TABLE ` + t + ` ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`); err != nil {
 				return err
 			}
+		}
+	}
+
+	// 旧库升级：sessions 补 answer_type（文本答题为历史默认）
+	ok, err := hasColumn(tx, "sessions", "answer_type")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		if _, err := tx.Exec(`ALTER TABLE sessions ADD COLUMN answer_type TEXT NOT NULL DEFAULT 'text'`); err != nil {
+			return err
 		}
 	}
 
@@ -302,12 +314,13 @@ func (s *sqliteStore) SaveSession(sess *model.TrainingSession) error {
 	if err != nil {
 		return fmt.Errorf("store: marshal answers: %w", err)
 	}
-	_, err = s.db.Exec(`INSERT INTO sessions (id, user_id, mode, status, direction, questions, answers, review, created_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err = s.db.Exec(`INSERT INTO sessions (id, user_id, mode, status, answer_type, direction, questions, answers, review, created_at, finished_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			status=excluded.status, direction=excluded.direction, questions=excluded.questions,
-			answers=excluded.answers, review=excluded.review, finished_at=excluded.finished_at`,
-		sess.ID, s.userID, sess.Mode, sess.Status, string(dir), string(qs), string(as),
+			status=excluded.status, answer_type=excluded.answer_type, direction=excluded.direction,
+			questions=excluded.questions, answers=excluded.answers, review=excluded.review,
+			finished_at=excluded.finished_at`,
+		sess.ID, s.userID, sess.Mode, sess.Status, sess.AnswerType, string(dir), string(qs), string(as),
 		sess.Review, sess.CreatedAt.Format(time.RFC3339), sess.FinishedAt.Format(time.RFC3339))
 	return err
 }
@@ -323,7 +336,7 @@ func scanSession(row scanner) (*model.TrainingSession, error) {
 		sess                          model.TrainingSession
 		dir, qs, as, created, finished string
 	)
-	if err := row.Scan(&sess.ID, &sess.Mode, &sess.Status, &dir, &qs, &as,
+	if err := row.Scan(&sess.ID, &sess.Mode, &sess.Status, &sess.AnswerType, &dir, &qs, &as,
 		&sess.Review, &created, &finished); err != nil {
 		return nil, err
 	}
@@ -342,7 +355,7 @@ func scanSession(row scanner) (*model.TrainingSession, error) {
 }
 
 func (s *sqliteStore) GetSession(id string) (*model.TrainingSession, error) {
-	row := s.db.QueryRow(`SELECT id, mode, status, direction, questions, answers, review, created_at, finished_at
+	row := s.db.QueryRow(`SELECT id, mode, status, answer_type, direction, questions, answers, review, created_at, finished_at
 		FROM sessions WHERE user_id = ? AND id = ?`, s.userID, id)
 	sess, err := scanSession(row)
 	if err != nil {
@@ -353,7 +366,7 @@ func (s *sqliteStore) GetSession(id string) (*model.TrainingSession, error) {
 
 // ListSessions 返回当前用户的全部面试会话，按创建时间倒序。
 func (s *sqliteStore) ListSessions() ([]model.TrainingSession, error) {
-	rows, err := s.db.Query(`SELECT id, mode, status, direction, questions, answers, review, created_at, finished_at
+	rows, err := s.db.Query(`SELECT id, mode, status, answer_type, direction, questions, answers, review, created_at, finished_at
 		FROM sessions WHERE user_id = ? ORDER BY created_at DESC`, s.userID)
 	if err != nil {
 		return nil, fmt.Errorf("store: list sessions: %w", err)

@@ -98,7 +98,12 @@ func (s *Service) SubmitAnswer(ctx context.Context, sessionID, answer string) (S
 	if err != nil {
 		return StepResult{}, fmt.Errorf("judge: %w", err)
 	}
-	sess.Answers = append(sess.Answers, model.Answer{QuestionID: lastQ.ID, Text: answer, Score: judge.Score})
+	sess.Answers = append(sess.Answers, model.Answer{
+		QuestionID: lastQ.ID,
+		Text:       answer,
+		Type:       sess.AnswerType, // 视频答题标识（来自会话答题方式）
+		Score:      judge.Score,
+	})
 	if err := s.nodes.store.SaveSession(sess); err != nil {
 		return StepResult{}, fmt.Errorf("persist answer: %w", err)
 	}

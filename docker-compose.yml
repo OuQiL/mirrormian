@@ -8,11 +8,23 @@ services:
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       MIRROR_DB_PATH: /app/data/mirror-mian.db
       MILVUS_ADDR: milvus:19530
+      MIRROR_KB_PATH: /app/kb
     volumes:
       - mian-data:/app/data
+      - mian-kb:/app/kb
     depends_on:
       - milvus
-    command: ["run"]
+    # 启动 Web 服务并固定端口 8012（供 cloudflared 隧道指向）
+    command: ["web", "-addr", ":8012"]
+
+  # Cloudflare Tunnel 旁车：把 8012 服务安全挂到你的域名，无需开放公网端口
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      # 在 .env 里填 CLOUDFLARE_TUNNEL_TOKEN=你的通道Token
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
 
   etcd:
     image: quay.io/coreos/etcd:v3.5.18
@@ -61,6 +73,7 @@ services:
 
 volumes:
   mian-data:
+  mian-kb:
   etcd-data:
   minio-data:
   milvus-data:

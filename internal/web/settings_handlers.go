@@ -4,13 +4,16 @@ package web
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"mirror-mian/internal/config"
@@ -21,10 +24,11 @@ const (
 	envBase = ".env"
 )
 
-// envKeys LLM/Embedding 配置键对。
+// envKeys LLM/Embedding/STT 配置键对。
 var envKeys = map[string][3]string{
 	"llm":       {"LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL"},
 	"embedding": {"LLM_EMBEDDING_BASE_URL", "LLM_EMBEDDING_API_KEY", "LLM_EMBEDDING_MODEL"},
+	"stt":       {"STT_BASE_URL", "STT_API_KEY", "STT_MODEL"},
 }
 
 // providerSettings 一组服务配置。
@@ -49,14 +53,27 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, _ *http.Request) {
 
 	out := map[string]providerSettings{}
 	for group, keys := range envKeys {
+		base, key, model := env[keys[0]], env[keys[1]], env[keys[2]]
+		// STT 缺省回退复用 LLM 服务商（与 config.Load 行为一致）
+		if group == "stt" {
+			if base == "" {
+				base = env[envKeys["llm"][0]]
+			}
+			if key == "" {
+				key = env[envKeys["llm"][1]]
+			}
+			if model == "" {
+				model = "whisper-1"
+			}
+		}
 		p := providerSettings{
-			BaseURL:       env[keys[0]],
-			APIKey:        env[keys[1]],
-			KeyConfigured: env[keys[1]] != "",
-			Model:         env[keys[2]],
+			BaseURL:       base,
+			APIKey:        key,
+			KeyConfigured: key != "",
+			Model:         model,
 		}
 		if p.KeyConfigured {
-			p.APIKeyMasked = maskKey(env[keys[1]])
+			p.APIKeyMasked = maskKey(key)
 		}
 		out[group] = p
 	}
@@ -139,7 +156,11 @@ func (s *Server) handleSettingsTest(w http.ResponseWriter, r *http.Request) {
 	if p, ok := req["embedding"]; ok && p.BaseURL != "" && p.Model != "" {
 		embRes = testEmbedding(client, p)
 	}
-	writeJSON(w, map[string]any{"llm": llmRes, "embedding": embRes})
+	sttRes := map[string]any{"ok": false}
+	if p, ok := req["stt"]; ok && p.BaseURL != "" && p.Model != "" {
+		sttRes = testSTT(client, p)
+	}
+	writeJSON(w, map[string]any{"llm": llmRes, "embedding": embRes, "stt": sttRes})
 }
 
 // testLLM 最小 chat 请求验证连通性。
@@ -190,6 +211,53 @@ func testEmbedding(client *http.Client, p providerSettings) map[string]any {
 		return map[string]any{"ok": false, "error": "返回格式无法解析"}
 	}
 	return map[string]any{"ok": true, "model": p.Model, "dim": len(out.Data[0].Embedding)}
+}
+
+// testSTT 上传一段 0.1s 静音 WAV 验证 /audio/transcriptions 连通性。
+func testSTT(client *http.Client, p providerSettings) map[string]any {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, _ := w.CreateFormFile("file", "ping.wav")
+	_, _ = fw.Write(tinyWAV())
+	_ = w.WriteField("model", p.Model)
+	_ = w.Close()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		strings.TrimRight(p.BaseURL, "/")+"/audio/transcriptions", &buf)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if resp.StatusCode != http.StatusOK {
+		return map[string]any{"ok": false, "error": fmt.Sprintf("HTTP %d: %s", resp.StatusCode, truncate(string(raw), 200))}
+	}
+	return map[string]any{"ok": true, "model": p.Model}
+}
+
+// tinyWAV 生成 0.1s 静音 PCM WAV（8kHz 单声道 16bit），用于 STT 连通性测试。
+func tinyWAV() []byte {
+	const (
+		sampleRate = 8000
+		dataLen    = sampleRate / 10 * 2 // 0.1s * 2 字节
+	)
+	buf := make([]byte, 44+dataLen)
+	copy(buf[0:], "RIFF")
+	binary.LittleEndian.PutUint32(buf[4:], uint32(36+dataLen))
+	copy(buf[8:], "WAVE")
+	copy(buf[12:], "fmt ")
+	binary.LittleEndian.PutUint32(buf[16:], 16)
+	binary.LittleEndian.PutUint16(buf[20:], 1) // PCM
+	binary.LittleEndian.PutUint16(buf[22:], 1) // mono
+	binary.LittleEndian.PutUint32(buf[24:], sampleRate)
+	binary.LittleEndian.PutUint32(buf[28:], sampleRate*2)
+	binary.LittleEndian.PutUint16(buf[32:], 2)
+	binary.LittleEndian.PutUint16(buf[34:], 16)
+	copy(buf[36:], "data")
+	binary.LittleEndian.PutUint32(buf[40:], uint32(dataLen))
+	return buf
 }
 
 func truncate(s string, n int) string {

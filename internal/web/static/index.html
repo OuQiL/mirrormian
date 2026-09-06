@@ -195,6 +195,11 @@
             <select id="resume-select">
               <option value="">选择已上传简历…</option>
             </select>
+            <div class="answer-type-select" id="answer-type-select">
+              <button type="button" class="answer-type-option active" data-answer-type="text">文本答题</button>
+              <button type="button" class="answer-type-option" data-answer-type="video">视频答题</button>
+            </div>
+            <p class="hint" id="answer-type-hint">文本答题：输入框作答；视频答题：摄像头录制口述，自动语音转写后由 AI 判定（录制视频仅保存在本地）。</p>
           </div>
           <button id="btn-start" class="primary">开始面试</button>
           <p class="hint">每轮一道题目，作答后系统自动判定并适时追问，单个知识点最多追问三轮。</p>
@@ -210,6 +215,19 @@
           <div id="input-row">
             <textarea id="answer" placeholder="输入你的回答…" rows="2"></textarea>
             <button id="btn-send">回答</button>
+          </div>
+          <div id="video-answer" class="video-answer" style="display:none">
+            <div class="video-stage">
+              <video id="video-preview" autoplay playsinline muted></video>
+              <video id="video-playback" controls style="display:none"></video>
+            </div>
+            <div class="video-controls">
+              <button id="btn-video-record" class="primary">开始录制</button>
+              <button id="btn-video-stop" class="danger" disabled>结束录制</button>
+              <button id="btn-video-again" class="ghost" style="display:none">重新录制</button>
+            </div>
+            <textarea id="video-transcript" rows="3" placeholder="口述内容将在此自动转写，可手动修改后提交…"></textarea>
+            <button id="btn-video-send" class="primary" disabled>提交回答</button>
           </div>
           <button id="btn-quit" class="ghost">结束面试并复盘</button>
         </div>
@@ -373,6 +391,21 @@
           <div class="btn-row">
             <button id="btn-emb-test" class="primary">测试连接</button>
             <span id="emb-test-result" class="test-result"></span>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <h3>STT（视频答题语音转写）</h3>
+          <p class="hint">语音识别服务，缺省复用 LLM 服务商的 /audio/transcriptions 能力（如 whisper-1）。</p>
+          <label class="field-label">Base URL</label>
+          <input id="set-stt-baseurl" type="text" placeholder="https://api.siliconflow.cn/v1">
+          <label class="field-label">API Key（明文显示，可直接修改）</label>
+          <input id="set-stt-key" type="text" placeholder="sk-..." autocomplete="off">
+          <label class="field-label">模型</label>
+          <input id="set-stt-model" type="text" placeholder="whisper-1">
+          <div class="btn-row">
+            <button id="btn-stt-test" class="primary">测试连接</button>
+            <span id="stt-test-result" class="test-result"></span>
           </div>
         </div>
 

@@ -12,4 +12,5 @@ COPY --from=builder /out/mian /app/mian
 RUN mkdir -p /app/data
 ENV MIRROR_DB_PATH=/app/data/mirror-mian.db
 ENTRYPOINT ["/app/mian"]
-CMD ["run"]
+# 启动 Web 服务（cmdWeb 默认 :8080，这里显式 :8012 便于隧道/DNS 指向）
+CMD ["web", "-addr", ":8012"]

@@ -12,7 +12,7 @@ import (
 
 // handleWarmupStart 综合面试暖场启动：后台准备 + 返回暖场提示。
 // 由 handleStart 的 full 分支调用（warmup=true 时）。
-func (s *Server) warmupStart(uc *userCtx, resumeText, jdText string) (string, error) {
+func (s *Server) warmupStart(uc *userCtx, resumeText, jdText, answerType string) (string, error) {
 	token := uuid.NewString()
 	ch := make(chan warmupResult, 1)
 
@@ -22,6 +22,13 @@ func (s *Server) warmupStart(uc *userCtx, resumeText, jdText string) (string, er
 		ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 		defer cancel()
 		sess, err := uc.svc.StartFull(ctx, resumeText, jdText)
+		if err == nil {
+			// 记录答题方式（文本/视频），随会话持久化
+			sess.AnswerType = answerType
+			if serr := uc.store.SaveSession(sess); serr != nil {
+				err = serr
+			}
+		}
 		ch <- warmupResult{sess: sess, err: err}
 	}()
 
@@ -75,7 +82,8 @@ func (s *Server) handleWarmupComplete(w http.ResponseWriter, r *http.Request) {
 				ID: first.ID, Text: first.Text,
 				KnowledgePt: first.KnowledgePt, Round: first.Round,
 			},
-			"mode": sess.Mode,
+			"mode":        sess.Mode,
+			"answer_type": sess.AnswerType,
 		})
 	case <-time.After(3 * time.Minute):
 		writeErr(w, http.StatusGatewayTimeout, "准备工作超时，请重试")
